@@ -8,6 +8,7 @@
 #include <CommObsolete.au3>
 #include <GuiEdit.au3>
 #include <WinAPIFiles.au3>
+#include <File.au3>
 ;#include <Timers.au3>
 #include <Date.au3>
 HotKeySet("{ESC}", "_Exit")
@@ -26,6 +27,9 @@ Global $hFile = 0
 Global $text_go
 Global $text_compare
 Global $sResult
+Global $sGetTextCmd = ""
+Global $tmp = ""
+Global $sText = ""
 $ProjectTest = GUICreate("ProjectTest",458,437,-1,-1,$WS_OVERLAPPEDWINDOW,-1)
 GUISetOnEvent($GUI_EVENT_CLOSE, "Special")
 GUISetOnEvent($GUI_EVENT_MINIMIZE, "Special")
@@ -57,14 +61,12 @@ $g_hTimer = TimerInit()
 AdlibRegister("ProjectTest", 50)
  
 While 1
-	
+	;$sGetTextCmd &= StdOutRead($tmp)
+	;If @error Then ExitLoop 
 Wend
 
 Func COMHandling()
 			$iRunTime = 1
-			$iRunTime += 1
-			
-			
 			;Local Const $sFilePath =  _WinAPI_GetTempFileName(@MyDocumentsDir, "Log1")
 			Local Const $sFilePath1 = "C:\Users\QuynhDam\Documents\Log1"
 			Local Const $sFilePath2 = "C:\Users\QuynhDam\Documents\Log2"
@@ -81,14 +83,16 @@ Func COMHandling()
 			If @error Then Return SetError(@error, @extended, @ScriptLineNumber)			
 			Local $iTextScrollback = 2000 * 120
 			GUICtrlSetLimit($edAllLog,$iTextScrollback)
-			If ($iRunTime = 2)Then 
-					ConsoleWrite("Run fisrt time(s)")
-			Else 
-					ConsoleWrite("Run second time(s)")
-			EndIf
+			;ConsoleWrite("Run time(s): " & $iRunTime)
+			
 			While 1
+				;MsgBox(0, "Notification", "Run time(s): " & $iRunTime, 1)
 				
 				$sResult = _CommAPI_ReceiveString($hFile, 1, 0)
+				If Not FileWrite($sFilePath, $sResult) Then
+					MsgBox($MB_SYSTEMMODAL, "", "An error occurred whilst writing the temporary file.")
+					Return False
+				EndIf
 				
 				_GUICtrlStatusBar_SetText($hStatusBar, @TAB & "Lines: " & _GUICtrlEdit_GetLineCount($edAllLog))
 				
@@ -103,17 +107,24 @@ Func COMHandling()
 						If StringInStr(_GUICtrlEdit_GetText($edLog), $sTextLogBootLoader) Then
 							
 							_CommAPI_TransmitData($hFile, " ")
-							Run("C:\Windows\system32\cmd.exe")
+							Local $tmp = Run("C:\Windows\system32\cmd.exe")
 							WinActivate("C:\Windows\system32\cmd.exe")
 							Sleep(100)
 							Send("{ENTER}")
 							Send("{SPACE}tftp -i 192.168.1.1 put tclinux.bin {ENTER}")
-								
+							;$tmp = Run(@ComSpec & " /c " & 'tftp -i 192.168.1.1 put tclinux.bin {ENTER}', "",@SW_MAXIMIZE,$STDOUT_CHILD)	
+							;$tmp = Run(@ComSpec &  " /k " &  "tftp -i 192.168.1.1 put tclinux.bin {ENTER}", "", @SW_SHOW,0)
 							WinActivate("ProjectTest")
 							$text_compare = "null"
 							
+							ConsoleWrite($sGetTextCmd)
+							$sTextError = "Timeout expired"
+							If StringInStr($sGetTextCmd, $sTextError ) Then 
+								MsgBox(0, "Error", "Re-check LAN or TFTP")
+								Return False 	
+							EndIf
 						EndIf 
-								
+						
 						If StringInStr(_GUICtrlEdit_GetText($edLog), $sWriteFlash) Then 
 							Sleep(5000);
 							_CommAPI_TransmitData($hFile, "go" )
@@ -124,52 +135,52 @@ Func COMHandling()
 							
 						
 						$sLinuxStart =  "Please press Enter to activate this console."
-						
+						$sLogin = "Enabling SSL security systemEncrypt ROMFILE"
 						If StringInStr(_GUICtrlEdit_GetText($edLog),$sLinuxStart) Then 
 							
-							_CommAPI_TransmitData($hFile,  @CRLF)
+							;_CommAPI_TransmitData($hFile,  @CRLF)
 						
 							_CommAPI_TransmitData($hFile,  @CRLF)
-							Sleep(1000)
-							If $sFilePath = $sFilePath1 Then 
-								If Not FileWrite($sFilePath, $sResult) Then
-									MsgBox($MB_SYSTEMMODAL, "", "An error occurred whilst writing the temporary file.")
-									Return False
-								EndIf
-							Else 
-								$sFilePath = $sFilePath2
-								FileWrite($sFilePath, $sResult)
-							EndIf 
+							Sleep(2000)
+							;MsgBox(0, "Notification", "Logging to console", 1)
 							_CommAPI_TransmitData($hFile, "ambit" & @LF)
 							
 							_CommAPI_TransmitData($hFile, "ambitdebug" & @LF)
 							
 							_CommAPI_TransmitData($hFile, "retsh foxconn168!" & @LF)
-							Sleep(1000)
+							Sleep(100)
 							_CommAPI_TransmitData($hFile, " prolinecmd serialnum display" & @LF)
-							
-							
-							
-							
-							
-							;If $iRunTime = 2 Then 
-								;MsgBox(0, "Notification", "End success first run time", 2)
-								;FileClose($sFilePath1)
-								$sFilePath = $sFilePath2
-							;Else 
-								;MsgBox(0, "Notification", "End success second run time", 2)
-								;FileClose($sFilePath2)
+							;MsgBox(0, "Notification", "Logged success", 1)
+							If ($iRunTime = 1) Then 
+								_CommAPI_TransmitData($hFile, " reboot" &@CRLF)
+							EndIf
+
+							If ($iRunTime = 2) Then 
+								;MsgBox(0, "Notification", "Run time(s): " & $iRunTime, 1)
+								_CommAPI_TransmitData($hFile, @CRLF)
+								;ExitLoop
+								;Sleep(1000)
 								
-								
-								
-								ExitLoop 
-							;EndIf
+								For $i = 1 To _FileCountLines($sFilePath)
+									$sMess = FileReadLine($sFilePath, $i)
+									If StringInStr($sMess, "SerialNum:") Then
+										$sText &= @CRLF & $sMess
+										
+									EndIf
+								Next
+								MsgBox(0, "", "Checking Serial Number", 1)
+								For $i = 1 To _FileCountLines($sFilePath)
+									$sMess = FileReadLine($sFilePath, $i)
+									If StringInStr($sMess, "SerialNum:") Then
+										$sText &= @CRLF & $sMess
+										
+									EndIf
+								Next
+								MsgBox(0, "Result", "This is Serial Number of GPON after upgrade firmware." & @CRLF & "Please re-check." & $sText)
+								FileDelete($sFilePath)
+							EndIf
 							
-							$sFilePath = $sFilePath2
-							$iRunTime += 1
-							Sleep(1000)
-							
-							_CommAPI_TransmitData($hFile, " reboot" &@CRLF)
+						$iRunTime += 1
 						EndIf 
 					
 				EndIf
